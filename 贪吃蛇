@@ -1,0 +1,128 @@
+"""snake.py - a snake that swims to the mouse and cannot fold in half.
+
+    python snake.py
+
+Move the mouse over the window. The snake turns toward it and swims there.
+Every joint of the spine has a limit: it can bend only BEND from the one in front.
+"""
+import math
+import tkinter as tk
+
+WIDE = 800                # the window, in pixels
+HIGH = 600
+GAP = 14                  # pixels from one point of the spine to the next
+SPEED = 4                 # pixels the head moves in one frame
+TURN = 0.15               # the most the head can turn in one frame
+NEAR = 30                 # the head stops when it is this close to the mouse
+BEND = math.pi / 8        # the most one joint can bend: 22.5 degrees
+QUARTER = math.pi / 2     # a quarter turn. Python measures angles in radians.
+WATER = "#12263a"         # the colour behind everything
+
+# How far the skin is from the spine at each point, from the head to the tail.
+# There is one number for each point, so this list also says how long the snake is.
+WIDTHS = [18, 20, 17, 16, 16, 16, 16, 16, 16, 16, 16, 15, 15, 15,
+          14, 14, 13, 13, 12, 12, 11, 10, 9, 8, 7, 6, 5, 4]
+
+
+def angle_to(start, end):
+    """The direction you face when you stand at start and look at end."""
+    return math.atan2(end[1] - start[1], end[0] - start[0])
+
+
+def walk(start, angle, far):
+    """Stand at start, face angle, walk far pixels. Give back where you are."""
+    return [start[0] + math.cos(angle) * far, start[1] + math.sin(angle) * far]
+
+
+def limit(angle, middle, most):
+    """Give back angle, or the nearest angle that is within most of middle."""
+    # How far angle is from middle, going the short way round the circle.
+    # The answer is from -pi to pi: minus is one way round, plus is the other.
+    away = (angle - middle + math.pi) % (2 * math.pi) - math.pi
+    if away > most:
+        return middle + most
+    if away < -most:
+        return middle - most
+    return angle
+
+
+class Snake:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("snake")
+        self.canvas = tk.Canvas(self.root, width=WIDE, height=HIGH, bg=WATER)
+        self.canvas.pack()
+        self.canvas.bind("<Motion>", self.mouse_moved)
+        self.mouse = [WIDE / 2, HIGH / 2]
+        # Start as a straight line. Point 0 is the head, in the middle of the window.
+        self.points = []
+        self.angles = []      # which way the body faces at each point
+        for i in range(len(WIDTHS)):
+            self.points.append([WIDE / 2 - i * GAP, HIGH / 2])
+            self.angles.append(0)       # 0 is "facing right"
+
+    def mouse_moved(self, event):
+        self.mouse = [event.x, event.y]
+
+    def move(self):
+        head = self.points[0]
+        if math.dist(head, self.mouse) < NEAR:
+            return            # it has arrived, so it waits for the mouse to move
+        # The head wants to face the mouse, but it can turn only TURN in one frame.
+        wanted = angle_to(head, self.mouse)
+        self.angles[0] = limit(wanted, self.angles[0], TURN)
+        self.points[0] = walk(head, self.angles[0], SPEED)
+        for i in range(1, len(WIDTHS)):
+            # Each point wants to face the point in front of it, within BEND.
+            wanted = angle_to(self.points[i], self.points[i - 1])
+            self.angles[i] = limit(wanted, self.angles[i - 1], BEND)
+            # Then it stands GAP behind that point. Minus GAP is a walk backwards.
+            self.points[i] = walk(self.points[i - 1], self.angles[i], -GAP)
+
+    def outline(self):
+        """The points of the skin, in order: down one side and back up the other."""
+        left = []
+        right = []
+        for i in range(len(WIDTHS)):
+            # A quarter turn from "forward" is "sideways". Walk out to the skin.
+            left.append(walk(self.points[i], self.angles[i] - QUARTER, WIDTHS[i]))
+            right.append(walk(self.points[i], self.angles[i] + QUARTER, WIDTHS[i]))
+        right.reverse()       # the right side runs from the tail back to the head
+        nose = walk(self.points[0], self.angles[0], WIDTHS[0])
+        return [nose] + left + right
+
+    def circle(self, centre, radius, fill, rim):
+        x, y = centre
+        # An oval is given by the box around it: left, top, right, bottom.
+        box = [x - radius, y - radius, x + radius, y + radius]
+        self.canvas.create_oval(box, fill=fill, outline=rim, width=2)
+
+    def draw(self):
+        self.canvas.delete("all")                         # wipe the last picture
+        # smooth=True rounds every corner, so the dots become one curved skin.
+        self.canvas.create_polygon(self.outline(), fill="#ee6c4d",
+                                   outline="white", width=3, smooth=True)
+        # The eyes. 1.2 is most of a quarter turn (1.57), so one sits on each side.
+        head = self.points[0]
+        facing = self.angles[0]
+        self.circle(walk(head, facing - 1.2, 9), 3, "white", "white")
+        self.circle(walk(head, facing + 1.2, 9), 3, "white", "white")
+
+    def frame(self):
+        self.move()
+        self.draw()
+        # Ask tkinter to call frame again in 16 ms, so the picture keeps changing.
+        self.root.after(16, self.frame)
+
+    def run(self):
+        self.frame()
+        self.root.mainloop()
+
+
+def main():
+    snake = Snake()
+    snake.run()
+
+
+if __name__ == "__main__":
+    main()
